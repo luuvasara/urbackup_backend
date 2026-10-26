@@ -654,8 +654,8 @@ void FileBackup::createHashThreads(bool use_reflink, bool ignore_hash_mismatches
 
 	for (size_t i = 0; i < h_cnt; ++i)
 	{
-		BackupServerHash* curr_bsh = new BackupServerHash(hashpipe, clientid, use_snapshots, use_reflink, use_tmpfiles, logid, use_snapshots, max_file_id);
-		BackupServerPrepareHash* curr_bsh_prepare = new BackupServerPrepareHash(hashpipe_prepare, hashpipe, clientid, logid, ignore_hash_mismatches);
+		BackupServerHash* curr_bsh = new BackupServerHash(hashpipe, clientid, use_snapshots, use_reflink, use_tmpfiles, logid, use_snapshots, max_file_id, &post_transfer_progress);
+		BackupServerPrepareHash* curr_bsh_prepare = new BackupServerPrepareHash(hashpipe_prepare, hashpipe, clientid, logid, ignore_hash_mismatches, &post_transfer_progress);
 		bsh.push_back(curr_bsh);
 		bsh_prepare.push_back(curr_bsh_prepare);
 		bsh_ticket.push_back(Server->getThreadPool()->execute(curr_bsh, "fbackup write" + convert(i)));
@@ -867,16 +867,68 @@ void FileBackup::logTransferProgress(int64 ctime, int64 done_bytes, int64 total_
 	msg += ". File hashing queue: " + convert(hashpipe_prepare->getNumElements())
 		+ ", file linking queue: " + convert(hashpipe->getNumElements());
 
+	std::string post_details = getPostTransferDetails();
+	if (!post_details.empty())
+	{
+		msg += ". " + post_details;
+	}
+
 	ServerLogger::LogProgress(logid, msg);
+}
+
+std::string FileBackup::getPostTransferDetails()
+{
+	std::vector<PostTransferProgress::SItem> items = post_transfer_progress.getActive();
+
+	if (items.empty())
+	{
+		return std::string();
+	}
+
+	//Show the one that has been working the longest
+	size_t shown = 0;
+	for (size_t i = 1; i < items.size(); ++i)
+	{
+		if (items[i].start_ms < items[shown].start_ms)
+		{
+			shown = i;
+		}
+	}
+
+	const PostTransferProgress::SItem& item = items[shown];
+
+	std::string ret = item.phase + " " + item.name;
+
+	if (item.size > 0
+		&& item.done > 0)
+	{
+		int64 done = (std::min)(item.done, item.size);
+		ret += " - " + PrettyPrintBytes(done) + " of " + PrettyPrintBytes(item.size)
+			+ " (" + convert(done * 100 / item.size) + "%)";
+	}
+
+	if (items.size() > 1)
+	{
+		ret += " (+" + convert(items.size() - 1) + " more)";
+	}
+
+	return ret;
 }
 
 void FileBackup::updateTransferDetails(ServerDownloadThreadGroup& server_download)
 {
 	std::vector<ServerDownloadThreadGroup::SCurrentTransfer> transfers = server_download.getCurrentTransfers();
 
+	//Hashing/linking of already received files runs in parallel to the transfer
+	std::string post_details = getPostTransferDetails();
+	if (!post_details.empty())
+	{
+		post_details = " | " + post_details;
+	}
+
 	if (transfers.empty())
 	{
-		ServerStatus::setProcessDetails(clientname, status_id, std::string(), -1);
+		ServerStatus::setProcessDetails(clientname, status_id, post_details.empty() ? std::string() : post_details.substr(3), -1);
 		return;
 	}
 
@@ -894,7 +946,7 @@ void FileBackup::updateTransferDetails(ServerDownloadThreadGroup& server_downloa
 		&& transfers[shown].done <= 0)
 	{
 		//Only empty files (or files just started): "Receiving x - 0 bytes" would be noise at phase transitions
-		ServerStatus::setProcessDetails(clientname, status_id, "Receiving files", -1);
+		ServerStatus::setProcessDetails(clientname, status_id, "Receiving files" + post_details, -1);
 		return;
 	}
 
@@ -925,6 +977,8 @@ void FileBackup::updateTransferDetails(ServerDownloadThreadGroup& server_downloa
 	{
 		details += " (+" + convert(transfers.size() - 1) + " more in progress)";
 	}
+
+	details += post_details;
 
 	ServerStatus::setProcessDetails(clientname, status_id, details, detail_pc);
 }
@@ -1413,11 +1467,18 @@ void FileBackup::waitForFileThreads(void)
 	size_t hashqueuesize=std::string::npos;
 	size_t prepare_hashqueuesize=0;
 	int64 last_queue_log = Server->getTimeMS();
+	std::string last_post_details;
 	while(hashqueuesize==std::string::npos || hashqueuesize>0 || prepare_hashqueuesize>0)
 	{
 		if (hashqueuesize != std::string::npos)
 		{
 			ServerStatus::setProcessQueuesize(clientname, status_id, prepare_hashqueuesize, hashqueuesize);
+
+			std::string post_details = getPostTransferDetails();
+			ServerStatus::setProcessDetails(clientname, status_id, "Hashing and linking received files"
+				+ (post_details.empty() ? std::string() : ": " + post_details), -1);
+			last_post_details = post_details;
+
 			Server->wait(1000);
 
 			int64 ctime = Server->getTimeMS();
@@ -1425,7 +1486,8 @@ void FileBackup::waitForFileThreads(void)
 			{
 				last_queue_log = ctime;
 				ServerLogger::LogProgress(logid, "Still hashing and linking received files. File hashing queue: " + convert(prepare_hashqueuesize)
-					+ ", file linking queue: " + convert(hashqueuesize));
+					+ ", file linking queue: " + convert(hashqueuesize)
+					+ (last_post_details.empty() ? std::string() : ". " + last_post_details));
 			}
 		}
 

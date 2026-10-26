@@ -10,6 +10,7 @@
 #include "../urbackupcommon/file_metadata.h"
 #include "server_log.h"
 #include "FileMetadataDownloadThread.h"
+#include "PostTransferProgress.h"
 #include <set>
 
 class ClientMain;
@@ -227,6 +228,9 @@ protected:
 		int64 linked_bytes, int64 &last_eta_received_bytes, double &eta_estimated_speed, _i64 files_size );
 	void logTransferProgress(int64 ctime, int64 done_bytes, int64 total_bytes);
 	void updateTransferDetails(ServerDownloadThreadGroup& server_download);
+
+	//What the hashing and linking threads are doing, empty if idle
+	std::string getPostTransferDetails();
 	bool hasChange(size_t line, const std::vector<size_t> &diffs);
 	bool link_file(const std::string &fn, const std::string &short_fn, const std::string &curr_path,
 		const std::string &os_path, const std::string& sha2, _i64 filesize, bool add_sql, FileMetadata& metadata);
@@ -274,6 +278,7 @@ protected:
 	std::vector<BackupServerHash*> bsh;
 	std::vector<THREADPOOL_TICKET> bsh_ticket;
 	std::vector<BackupServerPrepareHash*> bsh_prepare;
+	PostTransferProgress post_transfer_progress;
 	std::vector<THREADPOOL_TICKET> bsh_prepare_ticket;
 	std::auto_ptr<BackupServerHash> local_hash;
 	std::auto_ptr<BackupServerHash> local_hash2;
