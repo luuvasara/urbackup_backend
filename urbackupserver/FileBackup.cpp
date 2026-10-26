@@ -384,8 +384,8 @@ bool FileBackup::request_filelist_construct(bool full, bool resume, int group,
 
 					if (starttime - last_busy_log > progress_log_intervall)
 					{
-						ServerLogger::Log(logid, "Waiting for \"" + clientname + "\" to finish indexing (" + PrettyPrintTime(starttime - indexing_wait_start) + " so far)"
-							+ (index_details.empty() ? std::string() : ": " + index_details) + "...", LL_INFO);
+						ServerLogger::LogProgress(logid, "Waiting for \"" + clientname + "\" to finish indexing (" + PrettyPrintTime(starttime - indexing_wait_start) + " so far)"
+							+ (index_details.empty() ? std::string() : ": " + index_details) + "...");
 						last_busy_log = starttime;
 					}
 				}
@@ -867,7 +867,7 @@ void FileBackup::logTransferProgress(int64 ctime, int64 done_bytes, int64 total_
 	msg += ". File hashing queue: " + convert(hashpipe_prepare->getNumElements())
 		+ ", file linking queue: " + convert(hashpipe->getNumElements());
 
-	ServerLogger::Log(logid, msg, LL_INFO);
+	ServerLogger::LogProgress(logid, msg);
 }
 
 void FileBackup::updateTransferDetails(ServerDownloadThreadGroup& server_download)
@@ -1262,11 +1262,11 @@ void FileBackup::log_progress(const std::string & fn, int64 total, int64 downloa
 		{
 			pc_complete = static_cast<int>((static_cast<float>(downloaded) / total)*100.f);
 		}
-		ServerLogger::Log(logid, "Loading \"" + fn_wo_token + "\". " + convert(pc_complete) + "% finished " + PrettyPrintBytes(downloaded) + "/" + PrettyPrintBytes(total) + " at " + PrettyPrintSpeed(static_cast<size_t>(speed_bps)), LL_INFO);
+		ServerLogger::LogProgress(logid, "Loading \"" + fn_wo_token + "\". " + convert(pc_complete) + "% finished " + PrettyPrintBytes(downloaded) + "/" + PrettyPrintBytes(total) + " at " + PrettyPrintSpeed(static_cast<size_t>(speed_bps)));
 	}
 	else
 	{
-		ServerLogger::Log(logid, "Loading \"" + fn_wo_token + "\". Loaded " + PrettyPrintBytes(downloaded) + " at " + PrettyPrintSpeed(static_cast<size_t>(speed_bps)), LL_INFO);
+		ServerLogger::LogProgress(logid, "Loading \"" + fn_wo_token + "\". Loaded " + PrettyPrintBytes(downloaded) + " at " + PrettyPrintSpeed(static_cast<size_t>(speed_bps)));
 	}
 }
 
@@ -1424,8 +1424,8 @@ void FileBackup::waitForFileThreads(void)
 			if (ctime - last_queue_log > progress_log_intervall)
 			{
 				last_queue_log = ctime;
-				ServerLogger::Log(logid, "Still hashing and linking received files. File hashing queue: " + convert(prepare_hashqueuesize)
-					+ ", file linking queue: " + convert(hashqueuesize), LL_INFO);
+				ServerLogger::LogProgress(logid, "Still hashing and linking received files. File hashing queue: " + convert(prepare_hashqueuesize)
+					+ ", file linking queue: " + convert(hashqueuesize));
 			}
 		}
 
