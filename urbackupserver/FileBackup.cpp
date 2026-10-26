@@ -94,6 +94,42 @@ ServerBackupDao::SDuration FileBackup::interpolateDurations(const std::vector<Se
 		return ret;
 }
 
+//Text for the activities from the client's "BUSY-ph=index&n=<files>&dir=<dir>" keepalive.
+//The values come from the client and are shown in the web interface, so they are length limited and
+//stripped of control characters here; the interface escapes them again on output.
+std::string FileBackup::parseIndexProgress(const std::string& busy_msg)
+{
+	if (busy_msg.size() <= 5)
+	{
+		return std::string();
+	}
+
+	str_map params;
+	ParseParamStrHttp(busy_msg.substr(5), &params);
+
+	if (params["ph"] != "index")
+	{
+		return std::string();
+	}
+
+	std::string dir = params["dir"];
+	std::string clean;
+	for (size_t i = 0; i < dir.size() && clean.size() < 300; ++i)
+	{
+		if (static_cast<unsigned char>(dir[i]) >= 32 && dir[i] != 127)
+		{
+			clean += dir[i];
+		}
+	}
+
+	std::string ret = "Indexing: " + convert(watoi64(params["n"])) + " files";
+	if (!clean.empty())
+	{
+		ret += ", " + clean;
+	}
+	return ret;
+}
+
 bool FileBackup::getResult()
 {
 	return backup_result;
@@ -274,7 +310,7 @@ bool FileBackup::request_filelist_construct(bool full, bool resume, int group,
 			tcpstack.reset();
 			tcpstack.setAddChecksum(client_main->isOnInternetConnection());
 
-			std::string cmd = identity + "WAIT FOR INDEX async_id=" + async_id;
+			std::string cmd = identity + "WAIT FOR INDEX async_id=" + async_id + "&progress=1"; //ask for BUSY-<progress>; older clients ignore the parameter
 
 			if (with_token)
 			{
@@ -336,13 +372,20 @@ bool FileBackup::request_filelist_construct(bool full, bool resume, int group,
 
 					
 				}
-				else if(ret=="BUSY")
+				else if(ret=="BUSY" || next(ret, 0, "BUSY-"))
 				{
 					starttime=Server->getTimeMS();
 
+					std::string index_details = parseIndexProgress(ret);
+					if (!index_details.empty())
+					{
+						ServerStatus::setProcessDetails(clientname, status_id, index_details, -1);
+					}
+
 					if (starttime - last_busy_log > progress_log_intervall)
 					{
-						ServerLogger::Log(logid, "Waiting for \"" + clientname + "\" to finish indexing (" + PrettyPrintTime(starttime - indexing_wait_start) + " so far)...", LL_INFO);
+						ServerLogger::Log(logid, "Waiting for \"" + clientname + "\" to finish indexing (" + PrettyPrintTime(starttime - indexing_wait_start) + " so far)"
+							+ (index_details.empty() ? std::string() : ": " + index_details) + "...", LL_INFO);
 						last_busy_log = starttime;
 					}
 				}
@@ -387,6 +430,7 @@ bool FileBackup::request_filelist_construct(bool full, bool resume, int group,
 			else
 			{
 				logVssLogdata(Server->getTimeSeconds()-total_starttime_s);
+				ServerStatus::setProcessDetails(clientname, status_id, std::string(), -1);
 				Server->destroy(cc);
 				return true;
 			}
