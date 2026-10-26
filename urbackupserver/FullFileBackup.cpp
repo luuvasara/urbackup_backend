@@ -389,7 +389,7 @@ bool FullFileBackup::doFileBackup()
 							metadata_fn = backuppath_hashes + convertToOSPathFromFileClient(orig_curr_os_path + "/" + escape_metadata_fn(cf.name)); 
 							create_hash_dir=false;
 						}
-						else if(!os_create_dir(os_file_prefix(backuppath+local_curr_os_path)))
+						else if(!create_dir_timed(os_file_prefix(backuppath+local_curr_os_path)))
 						{
 							ServerLogger::Log(logid, "Creating directory  \""+backuppath+local_curr_os_path+"\" failed. " + systemErrorInfo(), LL_ERROR);
 							c_has_error=true;
@@ -403,7 +403,7 @@ bool FullFileBackup::doFileBackup()
 							metadata.orig_path = curr_orig_path;
 						}
 						
-						if(create_hash_dir && !os_create_dir(os_file_prefix(backuppath_hashes+local_curr_os_path)))
+						if(create_hash_dir && !create_dir_timed(os_file_prefix(backuppath_hashes+local_curr_os_path)))
 						{
 							ServerLogger::Log(logid, "Creating directory  \""+backuppath_hashes+local_curr_os_path+"\" failed. " + systemErrorInfo(), LL_ERROR);
 							c_has_error=true;

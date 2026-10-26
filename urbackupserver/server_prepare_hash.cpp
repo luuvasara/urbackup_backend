@@ -56,14 +56,23 @@ namespace
 	{
 	public:
 		HashProgressToSlot(PostTransferProgress* progress, size_t slot)
-			: writer(progress, slot) {}
+			: progress(progress), writer(progress, slot) {}
 
 		virtual void hash_progress(int64 curr)
 		{
 			writer.setDone(curr, Server->getTimeMS());
 		}
 
+		virtual void hash_read_time(int64 us)
+		{
+			if (progress != NULL)
+			{
+				progress->hash_read_wait.add(us);
+			}
+		}
+
 	private:
+		PostTransferProgress* progress;
 		PostTransferProgressWriter writer;
 	};
 }
@@ -74,7 +83,7 @@ BackupServerPrepareHash::BackupServerPrepareHash(IPipe *pPipe, IPipe *pOutput, i
 {
 	if (progress != NULL)
 	{
-		progress_slot = progress->addSlot();
+		progress_slot = progress->addSlot(PostTransferProgress::EWorker_Hash);
 	}
 
 	pipe=pPipe;
@@ -392,7 +401,16 @@ bool BackupServerPrepareHash::hash_sha(IFile *f, IExtentIterator* extent_iterato
 		}
 
 		bool has_read_error = false;
-		rc=f->Read(buf.data(), hash_bsize, &has_read_error);
+		if (progress_callback != NULL)
+		{
+			long long read_start = BlameCounter::nowUs();
+			rc = f->Read(buf.data(), hash_bsize, &has_read_error);
+			progress_callback->hash_read_time(BlameCounter::nowUs() - read_start);
+		}
+		else
+		{
+			rc = f->Read(buf.data(), hash_bsize, &has_read_error);
+		}
 
 		if (has_read_error)
 		{

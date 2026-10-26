@@ -26,6 +26,7 @@ namespace
 	const unsigned int status_update_intervall=1000;
 	const unsigned int eta_update_intervall=60000;
 	const unsigned int progress_log_intervall=300000;
+	const unsigned int blame_eval_intervall=10000;
 	const char* sync_fn = ".sync_f3a50226-f49a-4195-afef-c75b21781ae1";
 }
 
@@ -206,6 +207,10 @@ public:
 
 	static bool create_hardlink(const std::string &linkname, const std::string &fname, bool use_ioref, bool* too_many_links, bool* copy);
 
+	//Same, but the time is counted as main thread file system time (blame)
+	bool create_hardlink_timed(const std::string &linkname, const std::string &fname, bool use_ioref, bool* too_many_links, bool* copy);
+	bool create_dir_timed(const std::string &path);
+
 protected:
 	virtual bool doBackup();
 
@@ -231,6 +236,10 @@ protected:
 
 	//What the hashing and linking threads are doing, empty if idle
 	std::string getPostTransferDetails();
+
+	//Who is waiting on whom, e.g. "waiting for server storage (slow writes)", empty if unclear.
+	//server_download is NULL after the transfer. Re-evaluated every blame_eval_intervall.
+	std::string updateBlame(ServerDownloadThreadGroup* server_download);
 	bool hasChange(size_t line, const std::vector<size_t> &diffs);
 	bool link_file(const std::string &fn, const std::string &short_fn, const std::string &curr_path,
 		const std::string &os_path, const std::string& sha2, _i64 filesize, bool add_sql, FileMetadata& metadata);
@@ -308,6 +317,29 @@ protected:
 	int64 last_speed_received_bytes;
 	int64 speed_set_time;
 	int64 progress_log_time;
+
+	struct SBlameSample
+	{
+		SBlameSample()
+			: time_us(0), with_download(false), net_us(0), write_us(0), received(0),
+			main_fs_us(0), hash_busy_us(0), hash_read_us(0), link_busy_us(0) {}
+
+		int64 time_us;
+		bool with_download;
+		int64 net_us;
+		int64 write_us;
+		int64 received;
+		int64 main_fs_us;
+		int64 hash_busy_us;
+		int64 hash_read_us;
+		int64 link_busy_us;
+	};
+
+	BlameCounter main_fs_wait;
+	SBlameSample blame_last;
+	std::string blame_candidate;
+	std::string blame;
+	bool blame_paused;
 
 	std::auto_ptr<PhashLoad> phash_load;
 	THREADPOOL_TICKET phash_load_ticket;

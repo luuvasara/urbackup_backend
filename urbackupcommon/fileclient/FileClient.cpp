@@ -1142,7 +1142,10 @@ bool FileClient::Reconnect(void)
 					|| (dl_buf[0] == ID_FILESIZE_AND_EXTENTS && dl_off<1 + 2*sizeof(_u64)) )
 			) )
 		{
-			rc = tcpsock->Read(&dl_buf[dl_off], BUFFERSIZE-dl_off, 120000);
+			{
+				ScopedBlameTimer net_timer(wait_net);
+				rc = tcpsock->Read(&dl_buf[dl_off], BUFFERSIZE-dl_off, 120000);
+			}
 
 			if (rc != 0)
 			{
@@ -1540,7 +1543,11 @@ bool FileClient::Reconnect(void)
 							return ERR_ERROR;
 						}
 
-						_u32 cw=file->Write(&buf[written], tw);
+						_u32 cw;
+						{
+							ScopedBlameTimer write_timer(wait_write);
+							cw=file->Write(&buf[written], tw);
+						}
 						hash_func.update((unsigned char*)&buf[written], cw);
 						written+=cw;
 						write_remaining-=cw;
@@ -1777,6 +1784,12 @@ _i64 FileClient::getReceivedDataBytes( bool with_sparse )
 	{
 		return received_data_bytes;
 	}
+}
+
+void FileClient::getWaitTimes(int64& net_us, int64& write_us)
+{
+	net_us = wait_net.get();
+	write_us = wait_write.get();
 }
 
 bool FileClient::getCurrentFile(std::string& name, int64& size, int64& done)

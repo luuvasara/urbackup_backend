@@ -298,3 +298,33 @@ int64 ServerDownloadThreadGroup::getExtraReceivedDataBytes()
 	}
 	return ret;
 }
+
+void ServerDownloadThreadGroup::getWaitTimes(int64& net_us, int64& write_us, int64& received_bytes, size_t& n_threads)
+{
+	net_us = 0;
+	write_us = 0;
+	received_bytes = 0;
+	n_threads = dl_threads.size();
+
+	for (size_t i = 0; i < dl_threads.size(); ++i)
+	{
+		FileClient* curr_fc = i == 0 ? main_fc : dl_threads[i].fc;
+		FileClientChunked* curr_fc_chunked = i == 0 ? main_fc_chunked : dl_threads[i].fc_chunked;
+
+		int64 curr_net_us, curr_write_us;
+		if (curr_fc != NULL)
+		{
+			curr_fc->getWaitTimes(curr_net_us, curr_write_us);
+			net_us += curr_net_us;
+			write_us += curr_write_us;
+			received_bytes += curr_fc->getReceivedDataBytes(true);
+		}
+		if (curr_fc_chunked != NULL)
+		{
+			curr_fc_chunked->getWaitTimes(curr_net_us, curr_write_us);
+			net_us += curr_net_us;
+			write_us += curr_write_us;
+			received_bytes += curr_fc_chunked->getReceivedDataBytes(true);
+		}
+	}
+}

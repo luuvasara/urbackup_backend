@@ -430,6 +430,7 @@ _u32 FileClientChunked::GetFile(std::string remotefn, _i64& filesize_out, int64 
 			{
 				if(!queue_only && (!was_prepared || !initial_read) )
 				{
+					ScopedBlameTimer net_timer(getRoot()->wait_net);
 					getPipe()->isReadable(100);
 				}
 			}
@@ -614,7 +615,10 @@ _u32 FileClientChunked::GetFile(std::string remotefn, _i64& filesize_out, int64 
 		else
 		{
 			buf = stack_buf;
-			rc = getPipe()->Read(buf, BUFFERSIZE, 0);
+			{
+				ScopedBlameTimer net_timer(getRoot()->wait_net);
+				rc = getPipe()->Read(buf, BUFFERSIZE, 0);
+			}
 
 			if (initial_read && rc > 0 && rc < 10 && buf[0] == ID_ERR)
 			{
@@ -1462,6 +1466,7 @@ void FileClientChunked::State_Block(void)
 
 void FileClientChunked::writeFileRepeat(IFile *f, const char *buf, size_t bsize)
 {
+	ScopedBlameTimer write_timer(getRoot()->wait_write);
 	_u32 written=0;
 	_u32 rc;
 	int tries=50;
@@ -2283,6 +2288,12 @@ void FileClientChunked::clearCurrentFile()
 	FileClientChunked* root = getRoot();
 	IScopedLock lock(root->mutex);
 	root->current_name.clear();
+}
+
+void FileClientChunked::getWaitTimes(int64& net_us, int64& write_us)
+{
+	net_us = wait_net.get();
+	write_us = wait_write.get();
 }
 
 bool FileClientChunked::getCurrentFile(std::string& name, int64& size, int64& done)

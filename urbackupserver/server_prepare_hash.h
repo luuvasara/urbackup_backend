@@ -54,6 +54,9 @@ public:
 	{
 	public:
 		virtual void hash_progress(int64 curr) = 0;
+
+		//Time (us) the last read of the file took
+		virtual void hash_read_time(int64 us) {}
 	};
 
 

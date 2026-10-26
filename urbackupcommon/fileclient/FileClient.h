@@ -11,6 +11,7 @@
 #include "../../Interface/File.h"
 #include "../../Interface/Mutex.h"
 #include "../os_functions.h"
+#include "../BlameStats.h"
 
 #define TCP_PORT 35621
 #define UDP_PORT 35622
@@ -166,6 +167,9 @@ public:
 		//Name, size (-1 if not known yet) and received bytes of the file currently being loaded
 		bool getCurrentFile(std::string& name, int64& size, int64& done);
 
+		//Total time (us) spent waiting for data from the other side and writing received data to disk
+		void getWaitTimes(int64& net_us, int64& write_us);
+
 		static std::string getErrorString(_u32 ec);
 
 		void setReconnectionTimeout(unsigned int t);
@@ -286,6 +290,9 @@ private:
 		std::string current_name;
 		int64 current_size;
 		int64 current_done;
+
+		BlameCounter wait_net;
+		BlameCounter wait_write;
 
 		IMutex* mutex;
 

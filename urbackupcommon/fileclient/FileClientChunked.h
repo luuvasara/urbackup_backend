@@ -78,6 +78,9 @@ public:
 	//Name, size (-1 if not known yet) and position of the file currently being loaded
 	bool getCurrentFile(std::string& name, int64& size, int64& done);
 
+	//Total time (us) spent waiting for data from the client and writing received data to disk
+	void getWaitTimes(int64& net_us, int64& write_us);
+
 	void resetReceivedDataBytes(bool with_sparse);
 
 	void addThrottler(IPipeThrottler *throttler);
@@ -270,6 +273,9 @@ private:
 	std::string current_name;
 	int64 current_size;
 	int64 current_done;
+
+	BlameCounter wait_net;
+	BlameCounter wait_write;
 
 	FileClientChunked* getRoot();
 	void setCurrentFile(const std::string& name, int64 size, int64 done);

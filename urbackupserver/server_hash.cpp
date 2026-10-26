@@ -62,7 +62,7 @@ BackupServerHash::BackupServerHash(IPipe *pPipe, int pClientid, bool use_snapsho
 {
 	if (progress != NULL)
 	{
-		progress_slot = progress->addSlot();
+		progress_slot = progress->addSlot(PostTransferProgress::EWorker_Link);
 	}
 
 	pipe=pPipe;

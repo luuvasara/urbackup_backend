@@ -66,6 +66,9 @@ public:
 	//Bytes received by the additional download threads (the first one uses the FileClient passed to the constructor)
 	int64 getExtraReceivedDataBytes();
 
+	//Summed over all download threads: time (us) spent waiting for the client, time spent writing to disk, bytes received
+	void getWaitTimes(int64& net_us, int64& write_us, int64& received_bytes, size_t& n_threads);
+
 private:
 	ServerDownloadThread* getMinQueued();
 
