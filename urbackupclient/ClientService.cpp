@@ -484,6 +484,8 @@ int ClientConnector::Run()
 		}break;
 	case CCSTATE_CHANNEL: //Channel
 		{		
+			IdleCheckerThread::checkPauseTimeout();
+
 			IScopedLock lock(backup_mutex);
 
 			SChannel* chan = getCurrChannel();
@@ -3774,9 +3776,11 @@ void ClientConnector::sendStatus()
 
 	ret+="#"+convert(pcdone);
 
+	int64 pause_until = 0;
 	if(IdleCheckerThread::getPause())
 	{
 		ret+="#P";
+		pause_until = IdleCheckerThread::getPauseUntil();
 	}
 	else
 	{
@@ -3806,6 +3810,11 @@ void ClientConnector::sendStatus()
 
 	ret+="&keeping_awake=";
 	ret+=isPreventingSleep() ? "1" : "0";
+	if (pause_until > 0)
+	{
+		ret += "&pause_until=" + convert(pause_until);
+	}
+	ret += "&pause_timeout=" + convert(getPauseTimeoutSeconds());
 #ifdef _WIN32
 	ret+="&prevent_sleep=";
 	ret+=isPreventSleepEnabled() ? "1" : "0";

@@ -4326,6 +4326,7 @@ g.settings_list=[
 "image_file_format",
 "internet_connect_always",
 "prevent_sleep",
+"pause_timeout_hours",
 "verify_using_client_hashes",
 "internet_readd_file_entries",
 "local_incr_image_style",
@@ -4450,6 +4451,7 @@ g.client_settings_list=[
 "internet_encrypt",
 "internet_connect_always",
 "prevent_sleep",
+"pause_timeout_hours",
 "vss_select_components",
 "local_compress",
 "local_encrypt"
