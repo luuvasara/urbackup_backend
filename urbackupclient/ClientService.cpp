@@ -271,6 +271,7 @@ void ClientConnector::init_mutex(void)
 
 void ClientConnector::destroy_mutex(void)
 {
+	stopKeepAwake();
 	Server->destroy(backup_mutex);
 	Server->destroy(ident_mutex);
 	Server->destroy(process_mutex);
@@ -3128,6 +3129,8 @@ void ClientConnector::downloadImage(str_map params, IScopedLock& backup_mutex_lo
 		status_updated = true;
 	}
 
+	updateKeepAwake();
+
 	ScopedRemoveRunningBackup remove_running_backup(local_backup_running_id);
 
 	bool refused = false;
@@ -3803,6 +3806,10 @@ void ClientConnector::sendStatus()
 
 	ret+="&keeping_awake=";
 	ret+=isPreventingSleep() ? "1" : "0";
+#ifdef _WIN32
+	ret+="&prevent_sleep=";
+	ret+=isPreventSleepEnabled() ? "1" : "0";
+#endif
 
 	if(restore_ok_status==RestoreOk_Wait)
 	{
@@ -4613,6 +4620,8 @@ int64 ClientConnector::addNewProcess(SRunningProcess proc)
 		proc.id = ++curr_backup_running_id;
 	}	
 	running_processes.push_back(proc);
+	lock.relock(NULL);
+	updateKeepAwake();
 	return proc.id;
 }
 
