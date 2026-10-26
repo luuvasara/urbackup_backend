@@ -240,6 +240,19 @@ protected:
 	//Who is waiting on whom, e.g. "waiting for server storage (slow writes)", empty if unclear.
 	//server_download is NULL after the transfer. Re-evaluated every blame_eval_intervall.
 	std::string updateBlame(ServerDownloadThreadGroup* server_download);
+
+	struct SIndexBlameTimes
+	{
+		SIndexBlameTimes()
+			: all(0), list(0), hash(0), db(0), throttle(0) {}
+
+		int64 all;
+		int64 list;
+		int64 hash;
+		int64 db;
+		int64 throttle;
+	};
+	std::string indexBlame(const std::string& busy_msg, SIndexBlameTimes& last);
 	bool hasChange(size_t line, const std::vector<size_t> &diffs);
 	bool link_file(const std::string &fn, const std::string &short_fn, const std::string &curr_path,
 		const std::string &os_path, const std::string& sha2, _i64 filesize, bool add_sql, FileMetadata& metadata);

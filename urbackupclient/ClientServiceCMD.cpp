@@ -1329,16 +1329,29 @@ void ClientConnector::CMD_PING_RUNNING2(const std::string &cmd)
 	ParseParamStrHttp(params_str, &params);
 	str_map::iterator it_paused_fb = params.find("paused_fb");
 	const bool paused = IdleCheckerThread::getPause();
+	std::string reply;
 	if (it_paused_fb != params.end()
 		&& it_paused_fb->second == "1"
 		&& paused)
 	{
-		tcpstack.Send(pipe, "PAUSED");
+		reply = "PAUSED";
 	}
 	else
 	{
-		tcpstack.Send(pipe, "OK");
+		reply = "OK";
 	}
+
+	IFileServ* filesrv = IndexThread::getFileSrv();
+	if (params["xfer_fb"] == "1"
+		&& filesrv != NULL)
+	{
+		//Server asked how long the file server waited for disk reads and network sends (ms, totals)
+		int64 read_us, send_us;
+		filesrv->getTransferWaitTimes(read_us, send_us);
+		reply += "#rd=" + convert(read_us / 1000) + "&snd=" + convert(send_us / 1000);
+	}
+
+	tcpstack.Send(pipe, reply);
 
 	idle_timeout = 120000;
 

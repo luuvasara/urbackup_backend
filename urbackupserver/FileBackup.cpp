@@ -95,6 +95,61 @@ ServerBackupDao::SDuration FileBackup::interpolateDurations(const std::vector<Se
 		return ret;
 }
 
+//"waiting for client (indexing[, <reason>])". Newer clients add the time spent in total, listing directories,
+//hashing, in their database and throttled (t_all, t_list, t_hash, t_db, t_throttle; ms since indexing started)
+//to the BUSY- keepalive; the shares of the time since the previous keepalive give the reason.
+std::string FileBackup::indexBlame(const std::string& busy_msg, SIndexBlameTimes& last)
+{
+	std::string ret = "waiting for client (indexing";
+	if (busy_msg.size() <= 5)
+	{
+		return ret + ")";
+	}
+
+	str_map params;
+	ParseParamStrHttp(busy_msg.substr(5), &params);
+	if (params.find("t_all") == params.end())
+	{
+		return ret + ")";
+	}
+
+	SIndexBlameTimes curr;
+	curr.all = watoi64(params["t_all"]);
+	curr.list = watoi64(params["t_list"]);
+	curr.hash = watoi64(params["t_hash"]);
+	curr.db = watoi64(params["t_db"]);
+	curr.throttle = watoi64(params["t_throttle"]);
+
+	if (curr.all < last.all)
+	{
+		//new indexing run on the client
+		last = SIndexBlameTimes();
+	}
+
+	double window = static_cast<double>(curr.all - last.all);
+	double list = window > 0 ? (curr.list - last.list) / window : 0;
+	double hash = window > 0 ? (curr.hash - last.hash) / window : 0;
+	double db = window > 0 ? (curr.db - last.db) / window : 0;
+	double throttle = window > 0 ? (curr.throttle - last.throttle) / window : 0;
+	last = curr;
+
+	std::string reason;
+	double max_share = 0.5;
+	if (list >= max_share) { reason = "slow directory reads"; max_share = list; }
+	if (hash >= max_share) { reason = "hashing files"; max_share = hash; }
+	if (db >= max_share) { reason = "client database"; max_share = db; }
+	if (throttle >= max_share) { reason = "slowed down while the PC is in use or paused"; max_share = throttle; }
+
+	Server->Log("Blame " + clientname + " (indexing): list=" + convert(list) + " hash=" + convert(hash) + " db=" + convert(db)
+		+ " throttle=" + convert(throttle) + " window_ms=" + convert(static_cast<int64>(window)) + " -> " + (reason.empty() ? "-" : reason), LL_DEBUG);
+
+	if (!reason.empty())
+	{
+		ret += ", " + reason;
+	}
+	return ret + ")";
+}
+
 //Text for the activities from the client's "BUSY-ph=index&n=<files>&dir=<dir>" keepalive.
 //The values come from the client and are shown in the web interface, so they are length limited and
 //stripped of control characters here; the interface escapes them again on output.
@@ -158,6 +213,7 @@ bool FileBackup::request_filelist_construct(bool full, bool resume, int group,
 
 	int64 indexing_wait_start = Server->getTimeMS();
 	int64 last_busy_log = indexing_wait_start;
+	SIndexBlameTimes index_blame_times;
 
 	CTCPStack tcpstack(client_main->isOnInternetConnection());
 
@@ -378,7 +434,7 @@ bool FileBackup::request_filelist_construct(bool full, bool resume, int group,
 					starttime=Server->getTimeMS();
 
 					std::string index_details = parseIndexProgress(ret);
-					blame = "waiting for client (indexing)";
+					blame = indexBlame(ret, index_blame_times);
 					ServerStatus::setProcessDetails(clientname, status_id,
 						(index_details.empty() ? std::string("Indexing") : index_details) + " | " + blame, -1);
 
@@ -994,6 +1050,8 @@ std::string FileBackup::updateBlame(ServerDownloadThreadGroup* server_download)
 
 	std::string verdict;
 	std::string verdict_numbers;
+	double client_read = -1;
+	double client_send = -1;
 	if (server_download != NULL)
 	{
 		if (write >= 0.5)
@@ -1008,8 +1066,23 @@ std::string FileBackup::updateBlame(ServerDownloadThreadGroup* server_download)
 			int global_speed = internet ? server_settings->getGlobalInternetSpeed() : server_settings->getGlobalLocalSpeed();
 			bool speed_limit = (speed != 0 && speed != -1) || (global_speed != 0 && global_speed != -1);
 
-			verdict = std::string("waiting for client or network (") + (speed_limit ? "speed limit set" : "");
-			verdict_numbers = (speed_limit ? ", " : "") + blameRate(rate);
+			//Newer clients report how long their file server waited for its disk and for the network
+			if (pingthread != NULL
+				&& pingthread->getClientWaitShares(client_read, client_send)
+				&& client_read + client_send >= 0.3
+				&& client_read >= client_send)
+			{
+				verdict = "waiting for client (slow disk reads";
+				verdict_numbers = ", " + blameRate(rate);
+			}
+			else
+			{
+				if (client_read + client_send >= 0.3)
+					verdict = std::string("waiting for network (") + (speed_limit ? "speed limit set" : "");
+				else
+					verdict = std::string("waiting for client or network (") + (speed_limit ? "speed limit set" : "");
+				verdict_numbers = (speed_limit ? ", " : "") + blameRate(rate);
+			}
 		}
 		else if (main_fs >= 0.5)
 		{
@@ -1030,7 +1103,7 @@ std::string FileBackup::updateBlame(ServerDownloadThreadGroup* server_download)
 
 	Server->Log("Blame " + clientname + ": net=" + convert(net) + " write=" + convert(write) + " main_fs=" + convert(main_fs)
 		+ " hash=" + convert(hash) + " hash_read=" + convert(hash_read) + " link=" + convert(link)
-		+ " queue=" + convert(queue) + " rate=" + convert(rate) + " -> " + (verdict.empty() ? "-" : verdict + verdict_numbers + ")"), LL_DEBUG);
+		+ " queue=" + convert(queue) + " rate=" + convert(rate) + " client_read=" + convert(client_read) + " client_send=" + convert(client_send) + " -> " + (verdict.empty() ? "-" : verdict + verdict_numbers + ")"), LL_DEBUG);
 
 	//Change the shown line only if the same verdict came twice in a row (no flicker). After the transfer,
 	//while nothing is shown, the first verdict is shown at once: the hash/link phase is often short and
@@ -1215,7 +1288,7 @@ bool FileBackup::doBackup()
 		}
 	}
 
-	pingthread =new ServerPingThread(client_main, clientname, status_id, client_main->getProtocolVersions().eta_version>0, server_token);
+	pingthread =new ServerPingThread(client_main, clientname, status_id, client_main->getProtocolVersions().eta_version>0, server_token, true);
 	pingthread_ticket=Server->getThreadPool()->execute(pingthread, "client ping");
 
 	local_hash.reset(new BackupServerHash(NULL, clientid, use_snapshots, use_reflink, use_tmpfiles, logid, use_snapshots, max_file_id));
