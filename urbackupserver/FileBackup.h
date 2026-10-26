@@ -18,6 +18,7 @@ class BackupServerPrepareHash;
 class ServerPingThread;
 class FileIndex;
 class PhashLoad;
+class ServerDownloadThreadGroup;
 
 namespace
 {
@@ -224,6 +225,7 @@ protected:
 	void calculateEtaFileBackup( int64 &last_eta_update, int64& eta_set_time, int64 ctime, FileClient &fc, FileClientChunked* fc_chunked,
 		int64 linked_bytes, int64 &last_eta_received_bytes, double &eta_estimated_speed, _i64 files_size );
 	void logTransferProgress(int64 ctime, int64 done_bytes, int64 total_bytes);
+	void updateTransferDetails(ServerDownloadThreadGroup& server_download);
 	bool hasChange(size_t line, const std::vector<size_t> &diffs);
 	bool link_file(const std::string &fn, const std::string &short_fn, const std::string &curr_path,
 		const std::string &os_path, const std::string& sha2, _i64 filesize, bool add_sql, FileMetadata& metadata);
