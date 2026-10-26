@@ -3801,6 +3801,9 @@ void ClientConnector::sendStatus()
 		ret+="true";
 	}
 
+	ret+="&keeping_awake=";
+	ret+=isPreventingSleep() ? "1" : "0";
+
 	if(restore_ok_status==RestoreOk_Wait)
 	{
 		ret+="&restore_ask="+convert(ask_restore_ok);
